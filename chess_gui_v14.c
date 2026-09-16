@@ -3736,8 +3736,14 @@ static void render(int mx,int my){
     /* v9: FEN dialog overlay */
     if(custom_games_dialog_active) draw_custom_games_dialog();
     if(fen_dialog_active) draw_fen_dialog();
-    if(stropt_dialog_active) draw_stropt_dialog();
     if(uci_opts_dialog_active) draw_uci_options_dialog();
+    /* v14.1 FIX: stropt_dialog (string/spin value editor) must draw AFTER the
+       options dialog — drawing it before hid it completely behind the options
+       overlay (it sits fully inside its rect), so string/spin rows looked
+       dead; worse, while the invisible stropt stayed open every click was
+       swallowed by the modal guard, freezing even check toggles. Same bug
+       class as the tourney-manager/path_dialog order fixed above. */
+    if(stropt_dialog_active) draw_stropt_dialog();
     /* v14 fix: the tournament manager panel must draw before path_dialog,
        since "+ Add engine..." inside the manager opens path_dialog on top
        of it -- drawing tourney manager last was hiding that dialog every
