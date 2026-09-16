@@ -1,0 +1,30 @@
+# Build artifacts / binaries (ignored by default)
+*.exe
+*.dll
+*.o
+*.obj
+*.a
+*.so
+*.out
+*.zip
+*.7z
+*.res
+# Portable distribution — tracked for all machines
+!ChessGUI_V14_dist/*.exe
+!ChessGUI_V14_dist/*.dll
+!ChessGUI_V14_dist/**/*.png
+!ChessGUI_V14_dist/*.zip
+
+# Logs
+*.log
+
+# Local engine copies and tournament runtime data (not distributed)
+Engines/
+tournament_standings.txt
+
+# Code-signing certificate (contains sensitive key material - do NOT commit)
+codesign_cert.pem
+
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
