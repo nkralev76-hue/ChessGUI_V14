@@ -6184,6 +6184,9 @@ static void draw_tourney_manager(void){
     frect(rx+158,aby,140,24,50,70,50); orect(rx+158,aby,140,24,110,170,110); dtxt_raw(rx+166,aby+5,"+ Add Built-in",1,220,255,220);
     /* v16: point at a folder full of engines and add them all at once */
     frect(rx+306,aby,150,24,70,55,90); orect(rx+306,aby,150,24,170,120,210); dtxt_raw(rx+314,aby+5,"+ Add folder...",1,235,220,255);
+    /* v14.1: Export moved onto the add-buttons row — it used to sit under the
+       settings column overlapping "+ Add folder..." (same pixels). */
+    frect(rx+464,aby,166,22,45,45,58); orect(rx+464,aby,166,22,110,110,130); dtxt_raw(rx+472,aby+5,"Export standings",1,210,215,230);
 
     /* ---- settings (right column) ---- */
     int sx=dx+dw-360, sy=dy+44;
@@ -6219,7 +6222,6 @@ static void draw_tourney_manager(void){
             roster_n>=2? (tm_double_rr? roster_n*(roster_n-1)*tm_games_per_pairing : (roster_n*(roster_n-1)/2)*tm_games_per_pairing) : 0);
         dtxt_raw(sx,sy+158,l,1,170,180,200);
     }
-    frect(sx,sy+208,166,22,45,45,58); orect(sx,sy+208,166,22,110,110,130); dtxt_raw(sx+8,sy+213,"Export standings",1,210,215,230);
 
     /* ---- standings table ---- */
     int tx=dx+10, ty=ry+rh+44, tw=dw-20;
@@ -6936,8 +6938,23 @@ int main(void){
                     if(cmy>=aby&&cmy<=aby+24){
                         if(cmx>=rx&&cmx<=rx+150){ /* + Add engine... */
                             if(!tm_active){
+#ifdef _WIN32
+                                /* v14.1: native file picker instead of typing the path */
+                                { char picked[1024]="";
+                                  OPENFILENAMEA ofn={0};
+                                  ofn.lStructSize=sizeof(ofn); ofn.lpstrFile=picked; ofn.nMaxFile=sizeof(picked);
+                                  ofn.lpstrFilter="Chess engine\0*.exe\0All files\0*.*\0";
+                                  ofn.nFilterIndex=1; ofn.lpstrTitle="Select UCI engine for roster";
+                                  ofn.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;
+                                  if(GetOpenFileNameA(&ofn)){
+                                      int idx=tm_roster_add_path(picked);
+                                      if(idx>=0) snprintf(msg,sizeof msg,"Added to roster: %s",roster[idx].name);
+                                      else bottom_log_push("TM: roster is full (max 12 engines)");
+                                  } }
+#else
                                 path_dialog_active=1; path_dialog_mode=1; path_dialog_buf[0]=0; path_dialog_len=0;
                                 SDL_StartTextInput();
+#endif
                             }
                             goto skip;
                         }
@@ -6950,8 +6967,20 @@ int main(void){
                         }
                         if(cmx>=rx+306&&cmx<=rx+306+150){ /* + Add folder... (v16) */
                             if(!tm_active){
+#ifdef _WIN32
+                                /* v14.1: native folder picker instead of typing the path */
+                                { char picked[1024]="";
+                                  if(win_pick_folder(picked,sizeof picked,"Select folder with engines")){
+                                      int found=0;
+                                      int added=tm_roster_add_folder(picked,&found);
+                                      if(found==0) snprintf(msg,sizeof msg,"No runnable engine files found in: %.60s",picked);
+                                      else if(added<found) snprintf(msg,sizeof msg,"Added %d/%d engines (roster full, max 12)",added,found);
+                                      else snprintf(msg,sizeof msg,"Added %d engine%s from folder",added,added==1?"":"s");
+                                  } }
+#else
                                 path_dialog_active=1; path_dialog_mode=2; path_dialog_buf[0]=0; path_dialog_len=0;
                                 SDL_StartTextInput();
+#endif
                             }
                             goto skip;
                         }
@@ -6974,7 +7003,7 @@ int main(void){
                         if(tm_active) tm_stop(); else tm_start();
                         goto skip;
                     }
-                    if(cmx>=sx&&cmx<=sx+166&&cmy>=sy+208&&cmy<=sy+230){ tm_export_standings(); goto skip; }
+                    if(cmx>=rx+464&&cmx<=rx+464+166&&cmy>=aby&&cmy<aby+24){ tm_export_standings(); goto skip; }
                     (void)visible;
                     goto skip;
                 }
