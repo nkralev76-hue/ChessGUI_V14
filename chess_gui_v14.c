@@ -44,6 +44,7 @@
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 #  include <commdlg.h>   /* GetOpenFileName */
+#  include <shlobj.h>    /* SHBrowseForFolder (Browse button for path options) */
 #else
 #  include <unistd.h>
 #  include <sys/wait.h>
@@ -5884,7 +5885,7 @@ static void tm_export_standings(void){
     fprintf(f,"%-4s %-28s %6s %5s %4s %4s %4s %7s\n","Rank","Engine","Points","Gm","W","D","L","SB");
     for(int k=0;k<roster_n;k++){
         int i=order[k];
-        fprintf(f,"%-4d %-28s %6.1f %5d %4d %4d %4d %7.2f\n",
+        fprintf(f,"%-4d %-28.28s %6.1f %5d %4d %4d %4d %7.2f\n",
             k+1, roster[i].name, roster[i].points, roster[i].games,
             roster[i].wins, roster[i].draws, roster[i].losses, roster[i].sb);
     }
@@ -6224,17 +6225,46 @@ static void draw_tourney_manager(void){
     int tx=dx+10, ty=ry+rh+44, tw=dw-20;
     dtxt_raw(tx,ty-16,"Standings:",1,180,190,210);
     orect(tx,ty,tw,dh-(ty-dy)-14,70,70,85);
-    { char hdr[100]; snprintf(hdr,sizeof hdr,"%-4s %-30s %7s %5s %4s %4s %4s %7s","#","Engine","Points","Gm","W","D","L","SB");
-      dtxt_raw(tx+6,ty+4,hdr,1,150,160,180); }
+    /* v14.1: fixed pixel columns — the old single padded sprintf assumed a
+       monospace font, but TTF is proportional (RAW_ADV is only an average),
+       so Points/Gm/W/D/L/SB drifted whenever engine names had different
+       lengths. Each column now starts at a fixed X; numbers are anchored
+       from the right edge, the name takes whatever is left (truncated). */
+    int sadv=(int)(RAW_ADV+0.5); if(sadv<6)sadv=6;
+    int sc_end=tx+tw-6;
+    int sc_sb=sc_end-8*sadv;
+    int sc_l=sc_sb-5*sadv;
+    int sc_d=sc_l-5*sadv;
+    int sc_w=sc_d-5*sadv;
+    int sc_gm=sc_w-6*sadv;
+    int sc_pts=sc_gm-8*sadv;
+    int sc_rank=tx+6;
+    int sc_name=sc_rank+5*sadv;
+    int sc_maxc=(sc_pts-sc_name)/sadv-1; if(sc_maxc<8)sc_maxc=8; if(sc_maxc>40)sc_maxc=40;
+    dtxt_raw(sc_rank,ty+4,"#",1,150,160,180);
+    dtxt_raw(sc_name,ty+4,"Engine",1,150,160,180);
+    dtxt_raw(sc_pts,ty+4,"Points",1,150,160,180);
+    dtxt_raw(sc_gm,ty+4,"Gm",1,150,160,180);
+    dtxt_raw(sc_w,ty+4,"W",1,150,160,180);
+    dtxt_raw(sc_d,ty+4,"D",1,150,160,180);
+    dtxt_raw(sc_l,ty+4,"L",1,150,160,180);
+    dtxt_raw(sc_sb,ty+4,"SB",1,150,160,180);
     int order[MAX_ROSTER]; tm_standings_order(order);
     int trows=(dh-(ty-dy)-14-24)/TM_ROW_H;
     for(int k=0;k<roster_n && k<trows;k++){
         int i=order[k]; int yy=ty+24+k*TM_ROW_H;
         if(k%2==0) frect(tx+1,yy,tw-2,TM_ROW_H-1,38,38,48); else frect(tx+1,yy,tw-2,TM_ROW_H-1,32,32,42);
-        char row[120]; snprintf(row,sizeof row,"%-4d %-30.30s %7.1f %5d %4d %4d %4d %7.2f",
-            k+1, roster[i].name, roster[i].points, roster[i].games, roster[i].wins, roster[i].draws, roster[i].losses, roster[i].sb);
+        char nm[48]; snprintf(nm,sizeof nm,"%.*s",sc_maxc,roster[i].name);
+        char vb[32];
         int R=220,G=225,B=235; if(k==0){R=255;G=215;B=110;} else if(k==1){R=210;G=215;B=225;} else if(k==2){R=205;G=160;B=110;}
-        dtxt_raw(tx+6,yy+5,row,1,R,G,B);
+        snprintf(vb,sizeof vb,"%d",k+1); dtxt_raw(sc_rank,yy+5,vb,1,R,G,B);
+        dtxt_raw(sc_name,yy+5,nm,1,R,G,B);
+        snprintf(vb,sizeof vb,"%.1f",roster[i].points); dtxt_raw(sc_pts,yy+5,vb,1,R,G,B);
+        snprintf(vb,sizeof vb,"%d",roster[i].games); dtxt_raw(sc_gm,yy+5,vb,1,R,G,B);
+        snprintf(vb,sizeof vb,"%d",roster[i].wins); dtxt_raw(sc_w,yy+5,vb,1,R,G,B);
+        snprintf(vb,sizeof vb,"%d",roster[i].draws); dtxt_raw(sc_d,yy+5,vb,1,R,G,B);
+        snprintf(vb,sizeof vb,"%d",roster[i].losses); dtxt_raw(sc_l,yy+5,vb,1,R,G,B);
+        snprintf(vb,sizeof vb,"%.2f",roster[i].sb); dtxt_raw(sc_sb,yy+5,vb,1,R,G,B);
     }
 }
 
@@ -6351,6 +6381,41 @@ static void draw_uci_options_dialog(void){
 }
 
 /* v10: string option input dialog */
+/* v14.1: path-like string options (SyzygyPath, EvalFile, ...) get a Browse
+   button — picking via a native dialog beats pasting paths by hand.
+   Returns 2 for folders, 1 for files, 0 for plain strings. */
+static int uci_opt_path_kind(const char *name){
+    if(!name||!name[0]) return 0;
+    char low[128]; int i;
+    for(i=0;i<127&&name[i];i++){ char c=name[i]; low[i]=(c>='A'&&c<='Z')?(char)(c+32):c; }
+    low[i]=0;
+    if(strstr(low,"path")||strstr(low,"folder")||strstr(low,"director")||strstr(low,"syzygy")) return 2;
+    if(strstr(low,"file")||strstr(low,"book")) return 1;
+    return 0;
+}
+#ifdef _WIN32
+static int win_pick_file(char *out, int outsz, const char *title){
+    OPENFILENAMEA ofn={0}; char buf[1024]="";
+    ofn.lStructSize=sizeof(ofn); ofn.lpstrFile=buf; ofn.nMaxFile=sizeof(buf);
+    ofn.lpstrFilter="All files\0*.*\0";
+    ofn.nFilterIndex=1; ofn.lpstrTitle=title?title:"Select file";
+    ofn.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;
+    if(!GetOpenFileNameA(&ofn)) return 0;
+    strncpy(out,buf,outsz-1); out[outsz-1]=0; return 1;
+}
+static int win_pick_folder(char *out, int outsz, const char *title){
+    BROWSEINFOA bi={0}; char disp[MAX_PATH]="";
+    bi.pszDisplayName=disp; bi.lpszTitle=title?title:"Select folder";
+    bi.ulFlags=BIF_RETURNONLYFSDIRS|BIF_NEWDIALOGSTYLE;
+    LPITEMIDLIST pidl=SHBrowseForFolderA(&bi);
+    if(!pidl) return 0;
+    char path[MAX_PATH]="";
+    int ok=SHGetPathFromIDListA(pidl,path);
+    CoTaskMemFree(pidl);
+    if(!ok||!path[0]) return 0;
+    strncpy(out,path,outsz-1); out[outsz-1]=0; return 1;
+}
+#endif
 static void draw_stropt_dialog(void){
     int dw=480,dh=100;
     int dx=(WIN_W-dw)/2,dy=WIN_H/2-dh/2-30;
@@ -6368,15 +6433,27 @@ static void draw_stropt_dialog(void){
     }
     else strcpy(title,"Set string option:");
     dtxt(dx+8,dy+8,title,1,200,220,255);
-    frect(dx+8,dy+28,dw-16,24,14,14,22);orect(dx+8,dy+28,dw-16,24,70,110,200);
+    int browsekind=0;
+    if(stropt_dialog_opt_idx>=0 && stropt_dialog_opt_idx<uci_eng[ei].num_options){
+        UCIOption *oo2=&uci_eng[ei].options[stropt_dialog_opt_idx];
+        if(oo2->type==UOPT_STRING) browsekind=uci_opt_path_kind(oo2->name);
+    }
+    int field_w=browsekind?dw-16-108:dw-16;
+    frect(dx+8,dy+28,field_w,24,14,14,22);orect(dx+8,dy+28,field_w,24,70,110,200);
+    if(browsekind){
+        frect(dx+dw-108,dy+28,100,24,45,60,90);orect(dx+dw-108,dy+28,100,24,110,140,200);
+        dtxt(dx+dw-100,dy+34,"Browse...",1,200,220,255);
+    }
     char disp[280];
     int plen=strlen(stropt_dialog_buf);
+    int maxshow=browsekind?30:50;
     char *show=stropt_dialog_buf;
-    if(plen>50) show=stropt_dialog_buf+plen-50;
-    snprintf(disp,sizeof(disp),"%s%s",plen>50?"...":"",show);
+    if(plen>maxshow) show=stropt_dialog_buf+plen-maxshow;
+    snprintf(disp,sizeof(disp),"%s%s",plen>maxshow?"...":"",show);
     if((SDL_GetTicks()/500)%2==0)strncat(disp,"|",sizeof(disp)-strlen(disp)-1);
     dtxt(dx+12,dy+33,disp,1,220,230,255);
-    dtxt(dx+8,dy+60,"Enter = Apply    Esc = Cancel",1,120,130,160);
+    if(browsekind) dtxt(dx+8,dy+60,"Enter = Apply    Esc = Cancel    Browse = pick path",1,120,130,160);
+    else dtxt(dx+8,dy+60,"Enter = Apply    Esc = Cancel",1,120,130,160);
 }
 
 
@@ -6705,6 +6782,28 @@ int main(void){
                 }
             }
             if(e.type==SDL_MOUSEBUTTONDOWN){
+                /* v14.1: Browse button inside the string-option editor. Must run
+                   BEFORE the modal guard below, which swallows every click while
+                   stropt is open. Geometry mirrors draw_stropt_dialog. */
+                if(stropt_dialog_active && e.button.button==1){
+                    int bdw=480,bdx=(WIN_W-bdw)/2,bdy=WIN_H/2-100/2-30;
+                    int bei=options_engine, bkind=0;
+                    if(stropt_dialog_opt_idx>=0 && stropt_dialog_opt_idx<uci_eng[bei].num_options){
+                        UCIOption *bo=&uci_eng[bei].options[stropt_dialog_opt_idx];
+                        if(bo->type==UOPT_STRING) bkind=uci_opt_path_kind(bo->name);
+                    }
+                    int bmx=e.button.x, bmy=e.button.y;
+                    if(bkind && bmx>=bdx+bdw-108 && bmx<bdx+bdw-8 && bmy>=bdy+28 && bmy<bdy+52){
+#ifdef _WIN32
+                        char picked[1024]="";
+                        int ok=(bkind==2)
+                            ? win_pick_folder(picked,sizeof picked,"Select folder for this option")
+                            : win_pick_file(picked,sizeof picked,"Select file for this option");
+                        if(ok){ strncpy(stropt_dialog_buf,picked,255); stropt_dialog_buf[255]=0; stropt_dialog_len=(int)strlen(stropt_dialog_buf); }
+#endif
+                        goto skip;
+                    }
+                }
                 if(fen_dialog_active||path_dialog_active||stropt_dialog_active||custom_games_dialog_active) goto skip;
                 // v13 CMD: bottom log tabs
                 {

@@ -7,7 +7,7 @@ move analysis, ponder, real tournament manager and themes.
 ## Compilation (Windows, MinGW64)
 
 ```bat
-gcc -O3 -DUSE_BOOK -o chess_gui_v14.exe chess_gui_v14.c chess.res -lSDL2 -lSDL2_image -lSDL2_ttf -lm -lcomdlg32 -mwindows
+gcc -O3 -DUSE_BOOK -o chess_gui_v14.exe chess_gui_v14.c chess.res -lSDL2 -lSDL2_image -lSDL2_ttf -lm -lcomdlg32 -lshell32 -lole32 -mwindows
 ```
 
 Required DLLs (in the folder with the .exe): `SDL2.dll`,
