@@ -16,6 +16,19 @@ Required DLLs (in the folder with the .exe): `SDL2.dll`,
 `pieces/` folder with the piece graphics. `book.h` is only needed at
 compile time.
 
+## Opening names in saved PGN
+
+Saved games carry `[ECO]` and `[Opening]` tags. The data lives in
+`eco_openings.tsv` (lichess-org/chess-openings) and is turned into the
+`eco.h` header by:
+
+```bat
+python make_eco.py
+```
+
+`eco.h` is only needed at compile time, and is optional — without it the
+program still builds and simply leaves those two tags out.
+
 ## License
 
 GPL-3.0 — free to use and modify, but distributed changes must remain
