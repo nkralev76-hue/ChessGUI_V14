@@ -3811,12 +3811,14 @@ static int has_legal(int col){
     return 0;
 }
 
-/* One place where a finished game is dealt with: tournament bookkeeping first,
-   then the automatic PGN save. These used to be scattered over six call sites,
-   which is exactly how the saves and the scores could drift apart. */
+/* One place where a finished game is dealt with.
+   ORDER MATTERS: tourney_record_result() swaps tourney_player[] at its end so
+   the NEXT game gets the other colours, and pgn_auto_save() reads those slots to
+   name White/Black. Saving afterwards therefore wrote every tournament PGN with
+   the two colours inverted. Save first, then update the book-keeping. */
 static void game_finished(void){
-    tourney_record_result();
     pgn_auto_save();
+    tourney_record_result();
 }
 
 static void check_end(void){
